@@ -1,6 +1,5 @@
 library(rvest)
 library(tidyverse)
-library(caret)
 library(stringr)
 
 ##Specifies the years we want included in the dataset
@@ -17,7 +16,6 @@ Game_Results <- html_table(my_tables)
 #Some data cleaning items
 colnames(Game_Results)[6] <- 'specifier'
 colnames(Game_Results)[8] <- 'boxscore'
-gsub('San Diego Charger','Los Angeles Chargers',Game_Results)
 ##Removes meaningless columns with just header information
 Game_Results <- Game_Results[ !( grepl('Week', Game_Results$Week)),]
 Game_Results <- Game_Results[ !( grepl('Playoffs',Game_Results$Date)),]
@@ -101,7 +99,6 @@ CurrYrfun <- function(Yr,Tm,Wk){
 Week1fun(2019,'Washington Redskins')
 Week2fun(2019,'Baltimore Ravens',4)
 CurrYrfun(2019,'Washington Redskins',10)
-CurrYrfun(2019,'San Francisco 49ers',1)
 
 str(Schedule_Results)
 
