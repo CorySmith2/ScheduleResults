@@ -1,0 +1,113 @@
+library(rvest)
+library(tidyverse)
+library(caret)
+library(stringr)
+
+##Specifies the years we want included in the dataset
+years <- c(2016:2019)
+##Gets the result tables from pro football reference for each year specified
+for(i in years) {
+url1 <- 'https://www.pro-football-reference.com/years/'
+url2 <- '/games.htm'
+url <- paste0(url1,i,url2)
+my_html <- read_html(url)
+my_tables <- html_nodes(my_html,"table")[[1]]
+##Stores the tables in Game_Results
+Game_Results <- html_table(my_tables)
+#Some data cleaning items
+colnames(Game_Results)[6] <- 'specifier'
+colnames(Game_Results)[8] <- 'boxscore'
+gsub('San Diego Charger','Los Angeles Chargers',Game_Results)
+##Removes meaningless columns with just header information
+Game_Results <- Game_Results[ !( grepl('Week', Game_Results$Week)),]
+Game_Results <- Game_Results[ !( grepl('Playoffs',Game_Results$Date)),]
+##Converts all items in Week column to numeric value so its class can be converted to numeric
+Game_Results$Week <- ifelse(Game_Results$Week == 'WildCard',18,ifelse(Game_Results$Week == 'Division',19,
+      ifelse(Game_Results$Week == 'ConfChamp',20,ifelse(Game_Results$Week == 'SuperBowl',21,Game_Results$Week))))
+##Adding Home and Playoff binary variables, converting some columns to numeric
+Game_Results <- Game_Results %>% 
+  mutate(WTeam = `Winner/tie`,
+         LTeam = `Loser/tie`,
+         Year = i,
+         Home = ifelse(specifier == '@',0,ifelse(specifier == 'N','N',1)),
+         Playoffs = ifelse(Week == 18,1,ifelse(Week == 19,1,
+                    ifelse(Week == 20,1,ifelse(Week == 21,1,0)))),
+         Week = as.numeric(Week),
+         PtsW = as.numeric(PtsW),
+         PtsL = as.numeric(PtsL),
+         YdsW = as.numeric(YdsW),
+         YdsL = as.numeric(YdsL),
+         TOW = as.numeric(TOW),
+         TOL = as.numeric(TOL))
+assign(paste0(i,'game_results'),Game_Results)
+##Calculating the wins, losses, and Ties
+df <- get(paste0(i,'game_results'))
+winner <- df %>% 
+  select(Year,Week,Team = WTeam,Opp = LTeam,Pts = PtsW,Opp_Pts = PtsL,Yds = YdsW,
+         Opp_Yds = YdsL,TO = TOW,Opp_TO = TOL,Home,Playoffs) %>% 
+  mutate(win = ifelse(Pts > Opp_Pts, 1, ifelse(Pts == Opp_Pts, 'T',0)))
+assign(paste0(i,'winners'),winner)
+df <- get(paste0(i,'game_results'))
+loser <- df %>% 
+  select(Year,Week,Team = LTeam,Opp = WTeam,Pts = PtsL,Opp_Pts = PtsW,Yds = YdsL,
+         Opp_Yds = YdsW,TO = TOL,Opp_TO = TOW,Home,Playoffs) %>% 
+  mutate(win = ifelse(Pts > Opp_Pts, 1, ifelse(Pts == Opp_Pts, 'T',0)))
+assign(paste0(i,'losers'),loser)
+}
+
+##Binds the two data frames from each year together to get entire year's dataset
+for(i in years){
+df <- get(paste0(i,'losers'))
+df1 <- get(paste0(i,'winners'))
+df2 <- rbind(df,df1)
+assign(paste0(i,'results'),df2)
+}
+
+Schedule_Results <- rbind(`2016results`,`2017results`,`2018results`,`2019results`)
+Schedule_Results <- Schedule_Results %>% 
+  arrange(-Year,-Week)
+
+Schedule_Results$Team <- str_replace(Schedule_Results$Team,'San Diego Chargers','Los Angeles Chargers')
+
+Scores_and_results <- Schedule_Results
+
+Week1fun <- function(Yr,Tm){
+  PPG <- Schedule_Results %>% 
+    filter(Year == Yr-1 & Team == Tm) %>% 
+    group_by(Team) %>% 
+    summarize(APG = mean(Pts))
+  return(PPG[['APG']])
+}
+
+Week2fun <- function(Yr,Tm,Wk){
+  PPG <- Schedule_Results %>% 
+    filter(Year == Yr-1 & Team == Tm) %>% 
+    group_by(Team) %>% 
+    summarize(APG = mean(Pts))
+  CPPG <- Schedule_Results %>% 
+    filter(Year == Yr & Week < Wk & Team == Tm) %>% 
+    group_by(Team) %>% 
+    summarize(CAPG = mean(Pts))
+  return(.4*PPG[['APG']]+.6*CPPG[['CAPG']])
+}
+
+CurrYrfun <- function(Yr,Tm,Wk){
+  PPG <- Schedule_Results %>% 
+    filter(Year == Yr & Team == Tm & Week < Wk) %>% 
+    group_by(Team) %>% 
+    summarize(APG = mean(Pts))
+  return(PPG[['APG']])
+}
+Week1fun(2019,'Washington Redskins')
+Week2fun(2019,'Baltimore Ravens',4)
+CurrYrfun(2019,'Washington Redskins',10)
+CurrYrfun(2019,'San Francisco 49ers',1)
+
+str(Schedule_Results)
+
+Schedule_Results <- Schedule_Results %>% 
+  mutate(PPG = CurrYrfun(Year, Team, Week))
+
+CurrYrfun(2019,'Washington Redskins',10)
+CurrYrfun(2018,'Atlanta Falcons',13)
+CurrYrfun(2019,'Washington Redskins',15)
